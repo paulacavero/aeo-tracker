@@ -10,12 +10,55 @@ separate --user-data-dir. That profile runs alongside your normal Chrome and
 keeps its own logins.
 """
 
+import os
 import time
+import shutil
+import platform
 import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
-CHROME_BIN = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+def _detect_chrome():
+    """
+    Find a Chrome/Chromium binary across macOS, Windows, and Linux so anyone
+    who clones the repo can run the browser path without editing code.
+    Override by setting the AEO_CHROME_BIN environment variable to your Chrome
+    executable path (useful for non-standard installs or Brave/Edge).
+    Returns a path/command string, or None if nothing was found.
+    """
+    override = os.environ.get("AEO_CHROME_BIN")
+    if override:
+        return override
+
+    system = platform.system()
+    if system == "Darwin":
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+        ]
+    elif system == "Windows":
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+    else:  # Linux and others
+        candidates = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]
+
+    for c in candidates:
+        if os.path.sep in c or c.lower().endswith(".exe"):
+            if Path(c).exists():
+                return c
+        else:  # bare command name — look it up on PATH
+            found = shutil.which(c)
+            if found:
+                return found
+    return None
+
+
+CHROME_BIN = _detect_chrome()
 CDP_PORT = 9222
 # Dedicated automation profile (under auth/, gitignored). Persists logins
 # between runs and lets automation Chrome coexist with your normal Chrome.
@@ -44,6 +87,12 @@ def _ensure_chrome_running():
         return
     except Exception:
         pass
+
+    if not CHROME_BIN:
+        raise RuntimeError(
+            "Could not find a Chrome/Chromium browser. Install Google Chrome, or "
+            "set the AEO_CHROME_BIN environment variable to your Chrome executable path."
+        )
 
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     print("  Launching automation Chrome (separate profile — your normal Chrome is untouched)...")

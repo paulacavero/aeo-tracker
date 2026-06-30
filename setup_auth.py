@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 """
-Verifies that Playwright can open ChatGPT and Claude using your real Chrome profile.
-Run this once to confirm everything works before scheduling daily runs.
+One-time sign-in for the browser path.
+
+Opens a dedicated automation Chrome (a separate profile — your normal Chrome is
+NOT touched or closed) and waits for you to log in. The login persists in that
+profile, so daily scans can reuse it.
+
+By default this signs you into ChatGPT, which is the engine the tracker scrapes
+via the browser. (Claude is queried through the Anthropic API with web search,
+so it does not need a browser login.)
 
 Usage:
-  python3 setup_auth.py chatgpt
-  python3 setup_auth.py claude
-  python3 setup_auth.py both
+  python3 setup_auth.py            # ChatGPT (default)
+  python3 setup_auth.py chatgpt    # ChatGPT only
+  python3 setup_auth.py claude     # Claude only (optional; not needed for API path)
+  python3 setup_auth.py both       # both
+
+Chrome detection is cross-platform (macOS/Windows/Linux). If your Chrome is in a
+non-standard location, set the AEO_CHROME_BIN environment variable to its path.
 """
 
 import sys
@@ -17,21 +28,21 @@ from src.browser_claude import save_auth as save_claude
 
 def main():
     args = sys.argv[1:]
-    target = args[0] if args else "both"
+    target = args[0] if args else "chatgpt"
 
-    print("NOTE: This will close Chrome if it's open (needed to use your profile).")
-    print()
+    print("A separate automation Chrome will open. Log in when it appears.")
+    print("(Your normal Chrome is left untouched.)\n")
 
     with sync_playwright() as playwright:
         if target in ("chatgpt", "both"):
-            print("=== Checking ChatGPT ===")
+            print("=== ChatGPT ===")
             save_chatgpt(playwright)
 
         if target in ("claude", "both"):
-            print("\n=== Checking Claude ===")
+            print("\n=== Claude (optional — API path doesn't need this) ===")
             save_claude(playwright)
 
-    print("\nSetup complete. Run daily scans with: python3 run.py now")
+    print("\nSetup complete. Run a scan with: python3 run.py now")
 
 
 if __name__ == "__main__":

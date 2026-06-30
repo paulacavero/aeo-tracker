@@ -10,5 +10,9 @@ __pycache__/
 config/prompts.json
 config/settings.json
 
-# Generated dashboard (regenerated from data/results.db; can contain competitor intel)
+# Generated dashboards (regenerated from the DBs; can contain competitor intel)
 dashboard.html
+dashboard_browser.html
+
+# Research notes (competitor analysis) — keep local unless you choose to publish
+research/
