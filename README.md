@@ -20,7 +20,7 @@ The tracker can query each model two ways, and you choose per run:
 | **API** | `python run.py now` | OpenAI + Anthropic official APIs | Reliable, headless, schedulable. A faithful-enough proxy, but not the exact consumer app. |
 | **Browser** | `python run.py browser` | Drives the real ChatGPT / Claude **websites** in a dedicated Chrome profile (via the DevTools Protocol) | Closest to what real users see, but needs a logged-in browser and your machine awake. Stored separately so it never distorts the API trend. |
 
-**On citations (important):** Citations only appear when the model actually runs a web search. The OpenAI API path uses a search-enabled model, so it returns citations. **ChatGPT in the browser only cites when it chooses to search** — for many "best tool" prompts the free tier answers from memory and returns *no* citations (the brand-mention metrics still work). The Anthropic API now has a web-search tool that returns real citations; wiring it in is on the [roadmap](#status--roadmap).
+**On citations (important):** Citations only appear when the model actually runs a web search. The OpenAI API path uses a search-enabled model, and the **Anthropic API path now enables Claude's `web_search` tool** — both return real citations (url/title). **ChatGPT in the *browser* only cites when it chooses to search** — for many "best tool" prompts the free tier answers from memory and returns *no* citations (the brand-mention metrics still work).
 
 ## Setup
 
@@ -139,8 +139,8 @@ aeo-tracker/
 
 The tool runs today (both `now` and `browser` modes work), but the architecture is converging on a **hybrid** that plays to each surface's strengths:
 
-- **ChatGPT → browser scraping** of the logged-in consumer site (the answer real users see).
-- **Claude → Anthropic API with the web-search tool** — confirmed working, returns live answers with real citations. Scraping claude.ai is avoided because it violates Anthropic's ToS. *(Not yet wired into the default API path — coming next.)*
+- **Claude → Anthropic API with the web-search tool** — ✅ wired in. Returns live answers with real citations. Scraping claude.ai is avoided because it violates Anthropic's ToS.
+- **ChatGPT → browser scraping** of the logged-in consumer site (the answer real users see). *(The default daily run still uses the OpenAI API for ChatGPT; making the browser path the default for ChatGPT is the next step.)*
 
 Known limitations:
 - **ChatGPT citations are partial** — only captured when ChatGPT actually searches the web (see [How it works](#how-it-works)).
