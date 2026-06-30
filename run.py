@@ -20,19 +20,21 @@ from src import dashboard as dash_module
 
 
 def run_now(target_date=None):
-    runner.run_daily(target_date=target_date, engine_mode="api")
+    # Hybrid daily run: per-engine method from settings.json (default
+    # ChatGPT=browser, Claude=api). See runner.DEFAULT_METHODS.
+    runner.run_daily(target_date=target_date)
     dash_module.generate()
 
 
 def run_browser(target_date=None):
     """
-    Faithful spot-check against the real ChatGPT/Claude websites. Stored in a
-    SEPARATE database + dashboard so it never distorts the daily API trend.
+    Faithful spot-check forcing EVERY engine through the browser path. Stored in
+    a SEPARATE database + dashboard so it never distorts the daily trend.
     Requires a logged-in automation Chrome (see setup_auth.py).
     """
     base = Path(__file__).parent
     database.DB_PATH = base / "data" / "results_browser.db"
-    runner.run_daily(target_date=target_date, engine_mode="browser")
+    runner.run_daily(target_date=target_date, methods="browser")
     dash_module.generate(output_path=base / "dashboard_browser.html")
     print(f"\nBrowser spot-check saved to data/results_browser.db")
     print(f"Dashboard: {base / 'dashboard_browser.html'}")

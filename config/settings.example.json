@@ -10,6 +10,7 @@
     { "name": "Competitor Three", "keywords": ["Competitor Three", "competitorthree"], "domain": "competitorthree.com" }
   ],
   "engines": ["chatgpt", "claude"],
+  "engine_methods": { "chatgpt": "browser", "claude": "api" },
   "schedule_time": "09:00",
   "headless": true
 }
