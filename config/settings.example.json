@@ -1,0 +1,15 @@
+{
+  "brand": {
+    "name": "YourBrand",
+    "keywords": ["YourBrand", "yourbrand.com", "getyourbrand"],
+    "domain": "yourbrand.com"
+  },
+  "competitors": [
+    { "name": "Competitor One", "keywords": ["Competitor One", "competitorone"], "domain": "competitorone.com" },
+    { "name": "Competitor Two", "keywords": ["Competitor Two", "competitortwo"], "domain": "competitortwo.com" },
+    { "name": "Competitor Three", "keywords": ["Competitor Three", "competitorthree"], "domain": "competitorthree.com" }
+  ],
+  "engines": ["chatgpt", "claude"],
+  "schedule_time": "09:00",
+  "headless": true
+}

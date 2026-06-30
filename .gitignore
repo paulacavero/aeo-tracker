@@ -1,0 +1,14 @@
+.env
+data/
+auth/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Private config — your real prompts and competitor strategy stay local.
+# Example versions (config/*.example.json) ARE committed so others can use the tool.
+config/prompts.json
+config/settings.json
+
+# Generated dashboard (regenerated from data/results.db; can contain competitor intel)
+dashboard.html

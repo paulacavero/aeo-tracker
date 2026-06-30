@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.latitude.aeo-tracker</string>
+
+    <!-- Runs the daily API scan: python3 run.py now -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/paula/aeo-tracker/run.py</string>
+        <string>now</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/paula/aeo-tracker</string>
+
+    <!-- Fire every day at 10:00 (matches schedule_time in config/settings.json) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Don't run the moment it's loaded; wait for the scheduled time -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/paula/aeo-tracker/logs/scan.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/paula/aeo-tracker/logs/scan.log</string>
+</dict>
+</plist>
