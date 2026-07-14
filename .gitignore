@@ -16,3 +16,6 @@ dashboard_browser.html
 
 # Research notes (competitor analysis) — keep local unless you choose to publish
 research/
+
+# Runtime logs — contain prompt texts and brand results (your private strategy)
+logs/

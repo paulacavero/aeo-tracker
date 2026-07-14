@@ -27,22 +27,41 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_date_engine
             ON responses (date, engine)
         """)
+        # Migration: judge columns (recommended vs mentioned, sentiment, rank).
+        # Added after the base table so existing DBs upgrade in place.
+        _add_columns(conn, {
+            "latitude_recommended": "INTEGER NOT NULL DEFAULT 0",
+            "latitude_status":      "TEXT NOT NULL DEFAULT ''",   # recommended | mentioned | absent
+            "latitude_sentiment":   "TEXT NOT NULL DEFAULT ''",   # positive | neutral | negative
+            "latitude_rank":        "INTEGER",                     # nullable
+        })
         conn.commit()
     print("Database ready.")
 
 
+def _add_columns(conn, cols):
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(responses)")}
+    for name, decl in cols.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE responses ADD COLUMN {name} {decl}")
+
+
 def insert_response(date, prompt_id, prompt_text, engine, response_text,
-                    latitude_mentioned, latitude_cited, brands_mentioned, urls_cited):
+                    latitude_mentioned, latitude_cited, brands_mentioned, urls_cited,
+                    latitude_recommended=False, latitude_status="",
+                    latitude_sentiment="", latitude_rank=None):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
             INSERT INTO responses
                 (date, prompt_id, prompt_text, engine, response_text,
-                 latitude_mentioned, latitude_cited, brands_mentioned, urls_cited)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 latitude_mentioned, latitude_cited, brands_mentioned, urls_cited,
+                 latitude_recommended, latitude_status, latitude_sentiment, latitude_rank)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             date, prompt_id, prompt_text, engine, response_text,
             int(latitude_mentioned), int(latitude_cited),
-            json.dumps(brands_mentioned), json.dumps(urls_cited)
+            json.dumps(brands_mentioned), json.dumps(urls_cited),
+            int(latitude_recommended), latitude_status, latitude_sentiment, latitude_rank
         ))
         conn.commit()
 

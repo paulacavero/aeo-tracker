@@ -9,7 +9,7 @@ from datetime import date as date_module
 from pathlib import Path
 from dotenv import load_dotenv
 
-from . import database, detector
+from . import database, detector, judge
 from . import api_chatgpt, api_claude
 
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
@@ -135,18 +135,37 @@ def run_daily(target_date=None, skip_existing=True, methods=None):
                     lat_mentioned = detector.detect_latitude_mentioned(brands_found, brand["name"])
                     lat_cited = detector.detect_latitude_cited(urls_cited, brand["domain"])
 
+                    # Judge recommended-vs-mentioned only when the brand actually
+                    # appears in the text (saves a call when it's absent).
+                    lat_recommended = False
+                    lat_status = "mentioned" if lat_mentioned else "absent"
+                    lat_sentiment = ""
+                    lat_rank = None
+                    if lat_mentioned:
+                        verdict = judge.classify(response_text, brand["name"])
+                        if verdict:
+                            lat_status = verdict.get("status", lat_status)
+                            lat_recommended = (lat_status == "recommended")
+                            lat_sentiment = verdict.get("sentiment", "")
+                            lat_rank = verdict.get("rank")
+
                     database.insert_response(
                         today, pid, text, engine,
                         response_text=response_text,
                         latitude_mentioned=lat_mentioned,
                         latitude_cited=lat_cited,
                         brands_mentioned=brands_found,
-                        urls_cited=urls_cited
+                        urls_cited=urls_cited,
+                        latitude_recommended=lat_recommended,
+                        latitude_status=lat_status,
+                        latitude_sentiment=lat_sentiment,
+                        latitude_rank=lat_rank,
                     )
 
-                    status = "MENTIONED" if lat_mentioned else "not mentioned"
+                    rec_str = " + RECOMMENDED" if lat_recommended else ""
                     cited_str = " + CITED" if lat_cited else ""
-                    print(f"  [{pid}] {status}{cited_str} | brands: {brands_found}")
+                    status = "MENTIONED" if lat_mentioned else "not mentioned"
+                    print(f"  [{pid}] {status}{rec_str}{cited_str} | brands: {brands_found}")
 
                 done += 1
                 if done < total:
