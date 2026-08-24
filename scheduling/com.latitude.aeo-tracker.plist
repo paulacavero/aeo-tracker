@@ -5,12 +5,11 @@
     <key>Label</key>
     <string>com.latitude.aeo-tracker</string>
 
-    <!-- Runs the daily API scan: python3 run.py now -->
+    <!-- Runs the daily API scan, then publishes dashboard.html to Cloudflare Pages -->
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
-        <string>/Users/paula/aeo-tracker/run.py</string>
-        <string>now</string>
+        <string>/bin/zsh</string>
+        <string>/Users/paula/aeo-tracker/scheduling/run_daily.sh</string>
     </array>
 
     <key>WorkingDirectory</key>

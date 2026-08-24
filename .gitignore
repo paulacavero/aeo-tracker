@@ -19,3 +19,6 @@ research/
 
 # Runtime logs — contain prompt texts and brand results (your private strategy)
 logs/
+
+# Wrangler's local cache — holds your Cloudflare account ID
+.wrangler/

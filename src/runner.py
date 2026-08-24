@@ -4,6 +4,7 @@ stores results in SQLite.
 """
 
 import json
+import random
 import time
 from datetime import date as date_module
 from pathlib import Path
@@ -29,8 +30,27 @@ DEFAULT_METHODS = {
     "claude":  "api",
 }
 
-# Seconds between API calls — avoids hammering rate limits
-DELAY_BETWEEN_CALLS = 3
+# Seconds to wait between calls, per engine. The browser path against
+# chatgpt.com needs a far longer gap than an API call: firing prompts a few
+# seconds apart gets the session rate-limited, and once OpenAI starts erroring
+# the rest of the run is wasted. Override per engine with "delay_between_calls"
+# in settings.json.
+DEFAULT_DELAYS = {
+    "chatgpt": 30,
+    "claude":  3,
+}
+DEFAULT_DELAY = 3
+
+# Vary each wait by ±40% so the gaps aren't a fixed, robotic interval.
+DELAY_JITTER = 0.4
+
+# A failure is usually rate limiting, which needs a cooldown — wait this
+# multiple of the normal delay before trying the next prompt.
+FAILURE_BACKOFF = 3
+
+# Give up on an engine after this many failures in a row. Without this, a dead
+# browser session burns hours in per-prompt timeouts instead of moving on.
+MAX_CONSECUTIVE_FAILURES = 5
 
 
 def _resolve_methods(engines, settings, override):
@@ -44,6 +64,32 @@ def _resolve_methods(engines, settings, override):
         return {e: override for e in engines}
     cfg = override if isinstance(override, dict) else (settings.get("engine_methods") or {})
     return {e: cfg.get(e, DEFAULT_METHODS.get(e, "api")) for e in engines}
+
+
+def _delay_for(engine, settings):
+    """Seconds to wait between calls for this engine."""
+    configured = settings.get("delay_between_calls") or {}
+    if engine in configured:
+        return configured[engine]
+    return DEFAULT_DELAYS.get(engine, DEFAULT_DELAY)
+
+
+def _sleep_between(seconds, failed=False):
+    """Wait between prompts, with jitter and a longer pause after a failure."""
+    if failed:
+        seconds *= FAILURE_BACKOFF
+    seconds *= random.uniform(1 - DELAY_JITTER, 1 + DELAY_JITTER)
+    time.sleep(seconds)
+    return seconds
+
+
+def _order_engines(engines, method_for):
+    """
+    Run API engines before browser ones, whatever order settings.json lists
+    them in. The browser path is the fragile half: when it breaks it can eat the
+    rest of the run, so we want the reliable Claude data already saved by then.
+    """
+    return sorted(engines, key=lambda e: 0 if method_for.get(e) == "api" else 1)
 
 
 def load_config():
@@ -72,6 +118,7 @@ def run_daily(target_date=None, skip_existing=True, methods=None):
     competitors = settings["competitors"]
 
     method_for = _resolve_methods(engines, settings, methods)
+    engines = _order_engines(engines, method_for)
 
     # Load browser modules + a shared Playwright session only if some engine
     # actually uses the browser path.
@@ -101,7 +148,9 @@ def run_daily(target_date=None, skip_existing=True, methods=None):
                 print(f"No '{method}' module for engine '{engine}', skipping.")
                 continue
 
-            print(f"--- Engine: {engine.upper()} (method: {method}) ---")
+            delay = _delay_for(engine, settings)
+            consecutive_failures = 0
+            print(f"--- Engine: {engine.upper()} (method: {method}, delay: {delay}s) ---")
 
             for prompt in prompts:
                 pid = prompt["id"]
@@ -114,11 +163,20 @@ def run_daily(target_date=None, skip_existing=True, methods=None):
                     continue
 
                 print(f"  [{pid}] {text[:70]}...")
-                result = module.run_prompt(pw, text) if method == "browser" else module.run_prompt(text)
+                try:
+                    result = module.run_prompt(pw, text) if method == "browser" else module.run_prompt(text)
+                except Exception as e:
+                    # One bad prompt must never kill the run. The browser path
+                    # raises from outside its own try/except (Chrome not
+                    # starting, CDP connect timing out), which is what took down
+                    # every run from 2026-08-07 on.
+                    print(f"  [{pid}] Crashed: {type(e).__name__}: {e}")
+                    result = None
 
                 if result is None:
                     print(f"  [{pid}] Failed.")
                     errors += 1
+                    consecutive_failures += 1
                     database.insert_response(
                         today, pid, text, engine,
                         response_text="",
@@ -128,6 +186,7 @@ def run_daily(target_date=None, skip_existing=True, methods=None):
                         urls_cited=[]
                     )
                 else:
+                    consecutive_failures = 0
                     response_text = result["response_text"] or ""
                     urls_cited = result["urls_cited"]
 
@@ -168,8 +227,14 @@ def run_daily(target_date=None, skip_existing=True, methods=None):
                     print(f"  [{pid}] {status}{rec_str}{cited_str} | brands: {brands_found}")
 
                 done += 1
+
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    print(f"\n  {engine}: {consecutive_failures} failures in a row — "
+                          f"abandoning this engine, moving on.\n")
+                    break
+
                 if done < total:
-                    time.sleep(DELAY_BETWEEN_CALLS)
+                    _sleep_between(delay, failed=(result is None))
     finally:
         if pw is not None:
             pw.stop()
