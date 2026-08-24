@@ -2,3 +2,6 @@ openai>=1.30.0
 anthropic>=0.25.0
 schedule>=1.2.0
 python-dotenv>=1.0.0
+# Needed by the browser path. The floor matters: 1.58 cannot connect_over_cdp
+# to Chrome 151+ ("Browser context management is not supported").
+playwright>=1.60.0

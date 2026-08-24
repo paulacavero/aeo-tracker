@@ -16,7 +16,8 @@ import shutil
 import platform
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
+
+from . import urls
 
 
 def _detect_chrome():
@@ -64,13 +65,6 @@ CDP_PORT = 9222
 # between runs and lets automation Chrome coexist with your normal Chrome.
 PROFILE_DIR = Path(__file__).resolve().parent.parent / "auth" / "chrome_profile"
 RESPONSE_TIMEOUT = 120
-
-
-def _get_domain(url):
-    try:
-        return urlparse(url).netloc.replace("www.", "")
-    except Exception:
-        return ""
 
 
 def _ensure_chrome_running():
@@ -272,10 +266,23 @@ def _extract_response_text(page):
 
 
 def _extract_citations(page):
+    """
+    Pull cited URLs out of the rendered answer.
+
+    ChatGPT renders citations as separate pill elements
+    (data-testid="webpage-citation-pill"), not as inline markdown links — so
+    they never appear in the response text, only in the DOM.
+
+    Every pill href carries ?utm_source=chatgpt.com. The previous version of
+    this function dropped any URL containing "chatgpt.com", which matched that
+    param on every citation and discarded 100% of them. Filter on host instead.
+    """
     citations = []
     seen_urls = set()
     source_selectors = [
-        "[data-testid='citation'] a",
+        "[data-testid='webpage-citation-pill']",
+        "[data-testid*='citation'] a",
+        "[data-testid*='citation']",
         ".source-card a",
         "[data-message-author-role='assistant'] a[href^='http']",
         "article a[href^='http']",
@@ -286,13 +293,16 @@ def _extract_citations(page):
             for link in page.locator(sel).all():
                 try:
                     url = link.get_attribute("href")
-                    if not url or "openai.com" in url or "chatgpt.com" in url:
+                    if not url or not url.startswith("http"):
                         continue
+                    if urls.is_internal(url):
+                        continue
+                    url = urls.clean_url(url)
                     if url in seen_urls:
                         continue
                     seen_urls.add(url)
                     title = link.inner_text().strip() or ""
-                    citations.append({"url": url, "domain": _get_domain(url), "title": title})
+                    citations.append({"url": url, "domain": urls.get_domain(url), "title": title})
                 except Exception:
                     continue
         except Exception:

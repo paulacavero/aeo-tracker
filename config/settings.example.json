@@ -10,8 +10,8 @@
     { "name": "Competitor Three", "keywords": ["Competitor Three", "competitorthree"], "domain": "competitorthree.com" }
   ],
   "engines": ["chatgpt", "claude"],
-  "engine_methods": { "chatgpt": "api", "claude": "api" },
-  "delay_between_calls": { "chatgpt": 10, "claude": 3 },
+  "engine_methods": { "chatgpt": "browser", "claude": "api" },
+  "delay_between_calls": { "chatgpt": 30, "claude": 3 },
   "schedule_time": "09:00",
   "headless": true
 }

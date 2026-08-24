@@ -23,23 +23,23 @@ API_MODULES = {
 }
 
 # Default query method per engine when settings.json doesn't specify
-# `engine_methods`. Both engines go through search-enabled APIs so responses
-# carry real citations. Scraping chatgpt.com is more faithful to what a user
-# sees, but that session doesn't browse: it produced 1,894 responses and zero
-# citations. Use `run.py browser` for a spot-check when UI fidelity matters.
+# `engine_methods`. This is the hybrid: scrape ChatGPT's real site, query Claude
+# via the API (with web search). The scraped UI is what an actual user sees —
+# its retrieval reads full pages, while the search API only gets snippets — and
+# it does return citations. Override per engine in settings.json.
 DEFAULT_METHODS = {
-    "chatgpt": "api",
+    "chatgpt": "browser",
     "claude":  "api",
 }
 
 # Seconds to wait between calls, per engine. Override with
-# "delay_between_calls" in settings.json. ChatGPT's search model pulls ~16k
-# input tokens per call, so the gap is really about staying under the token
-# rate limit; a 429 now backs off rather than ending the run. If you switch an
-# engine back to the browser path, raise its delay a lot (30s+) — firing
-# prompts seconds apart gets the scraped session rate-limited.
+# "delay_between_calls" in settings.json. The browser path needs a long,
+# human-looking gap — firing prompts seconds apart gets the scraped session
+# rate-limited, and once ChatGPT starts erroring the rest of the run is wasted.
+# API engines only need enough spacing to stay under the token rate limit;
+# a 429 now backs off rather than ending the run.
 DEFAULT_DELAYS = {
-    "chatgpt": 10,
+    "chatgpt": 30,
     "claude":  3,
 }
 DEFAULT_DELAY = 3

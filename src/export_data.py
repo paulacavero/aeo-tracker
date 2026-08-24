@@ -67,11 +67,12 @@ def main():
         "total_responses": len(rows),
         "date_range": [min(r["date"] for r in rows), max(r["date"] for r in rows)],
         "note": (
-            "ChatGPT was queried by scraping chatgpt.com until 2026-08-24, and that "
-            "session never triggered web search — so citations before that date are "
-            "Claude-only. From 2026-08-24 ChatGPT goes through a search-enabled API "
-            "and contributes citations too. Mentions in brands.json cover both "
-            "engines throughout."
+            "Citations before 2026-08-24 are Claude-only. ChatGPT was cited all "
+            "along, but the scraper discarded every citation it collected: the "
+            "filter that skips links back to chatgpt.com matched the "
+            "?utm_source=chatgpt.com param that ChatGPT appends to each citation. "
+            "Fixed 2026-08-24; those earlier citations were never stored and cannot "
+            "be recovered. Mentions in brands.json cover both engines throughout."
         ),
     }
 
