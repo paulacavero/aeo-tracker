@@ -24,24 +24,42 @@ if ! zsh scheduling/deploy_dashboard.sh; then
     failed=1
 fi
 
-# Export data for agents and push to the private aeo-data repo
-if /usr/bin/python3 src/export_data.py; then
-    if cd /Users/paula/aeo-data; then
-        git add -A
-        if git diff --cached --quiet; then
-            echo "run_daily: no data changes to commit"
-        elif git commit -q -m "Data export $(date +%Y-%m-%d)" && git push -q origin main; then
-            echo "run_daily: data exported and pushed"
-        else
-            echo "run_daily: data commit/push failed"
-            failed=1
-        fi
+# Export agent-friendly JSON into the private aeo-data repo
+if ! /usr/bin/python3 src/export_data.py; then
+    echo "run_daily: export_data.py failed"
+    failed=1
+fi
+
+# Weekly database backup, Sundays. The raw response history lives only on this
+# machine (data/ is gitignored) and can't be rebuilt from the JSON exports, so a
+# gzipped dump rides the aeo-data push. Same filename every week, so git keeps
+# one rolling blob instead of 52. Only overwrites the good copy once the dump
+# has succeeded and is non-empty — a failed dump leaves last week's intact.
+if [ "$(date +%u)" -eq 7 ]; then
+    tmp_dump=$(mktemp)
+    if /usr/bin/sqlite3 data/results.db .dump > "$tmp_dump" && [ -s "$tmp_dump" ]; then
+        gzip -9 -c "$tmp_dump" > /Users/paula/aeo-data/results-weekly.sql.gz
+        echo "run_daily: weekly db backup written ($(du -h /Users/paula/aeo-data/results-weekly.sql.gz | cut -f1))"
     else
-        echo "run_daily: /Users/paula/aeo-data not found"
+        echo "run_daily: weekly db backup failed — dump errored or was empty"
+        failed=1
+    fi
+    rm -f "$tmp_dump"
+fi
+
+# Commit and push whatever changed in the private data repo
+if cd /Users/paula/aeo-data; then
+    git add -A
+    if git diff --cached --quiet; then
+        echo "run_daily: no data changes to commit"
+    elif git commit -q -m "Data export $(date +%Y-%m-%d)" && git push -q origin main; then
+        echo "run_daily: data exported and pushed"
+    else
+        echo "run_daily: data commit/push failed"
         failed=1
     fi
 else
-    echo "run_daily: export_data.py failed"
+    echo "run_daily: /Users/paula/aeo-data not found"
     failed=1
 fi
 
