@@ -13,21 +13,27 @@ TRACKER_DIR="$(dirname "$0")/.."
 cd "$TRACKER_DIR" || exit 1
 
 failed=0
+# Step failures accumulate here and get passed to the health check, so one
+# email covers both "a step broke" and "the data looks thin".
+notes=""
+
+note() {
+    echo "run_daily: $1"
+    notes="${notes}${1}"$'\n'
+    failed=1
+}
 
 if ! /usr/bin/python3 run.py now; then
-    echo "run_daily: scan failed — continuing with whatever data was collected"
-    failed=1
+    note "scan failed — continued with whatever data was collected"
 fi
 
 if ! zsh scheduling/deploy_dashboard.sh; then
-    echo "run_daily: dashboard deploy failed"
-    failed=1
+    note "dashboard deploy failed"
 fi
 
 # Export agent-friendly JSON into the private aeo-data repo
 if ! /usr/bin/python3 src/export_data.py; then
-    echo "run_daily: export_data.py failed"
-    failed=1
+    note "export_data.py failed"
 fi
 
 # Weekly database backup, Sundays. The raw response history lives only on this
@@ -41,8 +47,7 @@ if [ "$(date +%u)" -eq 7 ]; then
         gzip -9 -c "$tmp_dump" > /Users/paula/aeo-data/results-weekly.sql.gz
         echo "run_daily: weekly db backup written ($(du -h /Users/paula/aeo-data/results-weekly.sql.gz | cut -f1))"
     else
-        echo "run_daily: weekly db backup failed — dump errored or was empty"
-        failed=1
+        note "weekly db backup failed — dump errored or was empty"
     fi
     rm -f "$tmp_dump"
 fi
@@ -55,11 +60,17 @@ if cd /Users/paula/aeo-data; then
     elif git commit -q -m "Data export $(date +%Y-%m-%d)" && git push -q origin main; then
         echo "run_daily: data exported and pushed"
     else
-        echo "run_daily: data commit/push failed"
-        failed=1
+        note "data commit/push failed"
     fi
 else
-    echo "run_daily: /Users/paula/aeo-data not found"
+    note "/Users/paula/aeo-data not found"
+fi
+
+# Health check last: emails if a step failed OR the day's coverage is thin.
+# Partial collection is what went unnoticed for 18 days, and it looks identical
+# to success from an exit code alone.
+cd "$TRACKER_DIR" || exit 1
+if ! printf '%s' "$notes" | /usr/bin/python3 src/health_check.py --alert; then
     failed=1
 fi
 
