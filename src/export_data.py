@@ -66,7 +66,13 @@ def main():
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_responses": len(rows),
         "date_range": [min(r["date"] for r in rows), max(r["date"] for r in rows)],
-        "note": "Citations come from Claude responses only (ChatGPT free tier does not trigger web search).",
+        "note": (
+            "ChatGPT was queried by scraping chatgpt.com until 2026-08-24, and that "
+            "session never triggered web search — so citations before that date are "
+            "Claude-only. From 2026-08-24 ChatGPT goes through a search-enabled API "
+            "and contributes citations too. Mentions in brands.json cover both "
+            "engines throughout."
+        ),
     }
 
     EXPORT_DIR.mkdir(exist_ok=True)
