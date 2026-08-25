@@ -9,7 +9,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from . import database
+from . import database, omnia_view
 
 OUTPUT_PATH = Path(__file__).parent.parent / "dashboard.html"
 CONFIG_DIR  = Path(__file__).parent.parent / "config"
@@ -253,7 +253,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <script>
 const RAW = JSON.parse(document.getElementById("data").textContent);
 const YOU = RAW.brand;
-const TABS = ["Briefing", "Prompts", "Citations", "AI Answers"];
+const OMNIA = RAW.omnia || null;
+const TABS = ["Briefing", "Prompts", "Citations", "AI Answers"]
+  .concat(OMNIA ? ["Omnia history"] : []);
 const state = { tab:"Briefing", pSel:null, pChip:"All", pSearch:"",
                 citChip:"All", ansEngine:"All", ansOnlyLat:false, ansPrompt:null,
                 leadAll:false, ansOpen:{}, range:"All" };
@@ -754,6 +756,80 @@ function renderAnswers(){
 }
 
 /* ---------- shell ---------- */
+
+/* ---------- Omnia history (imported, pre-migration) ---------- */
+function renderOmnia(){
+  if (!OMNIA) return `<div class="card" style="padding:24px;">No imported Omnia data.</div>`;
+  const days = OMNIA.days, engines = OMNIA.engines;
+  if (!days.length) return `<div class="card" style="padding:24px;">Imported table is empty.</div>`;
+
+  const W=1000, H=200, P=8;
+  const sovAt = (e,d,b) => ((OMNIA.sovByDay[e]||{})[d]||{})[b] || 0;
+
+  let blocks = engines.map(e => {
+    const shown = OMNIA.brands.filter(b =>
+      days.some(d => sovAt(e,d,b) > 0)).slice(0,7);
+    const withYou = shown.includes(YOU) ? shown : [...shown, YOU];
+    const maxV = Math.max(...withYou.map(b=>Math.max(...days.map(d=>sovAt(e,d,b)))), 0.1)*1.2;
+    const X = i => P+(W-2*P)*i/Math.max(1,days.length-1);
+    const Y = v => H-P-(H-2*P)*v/maxV;
+    const pts = b => days.map((d,i)=>X(i).toFixed(1)+","+Y(sovAt(e,d,b)).toFixed(1)).join(" ");
+    let lines = withYou.filter(b=>b!==YOU)
+      .map(b=>svgLine(H,maxV,pts(b),brandColor(b),1.5,0.75)).join("");
+    lines += svgLine(H,maxV,pts(YOU),"#0a6fd1",2.6,1);
+    const last = days[days.length-1];
+    const now = sovAt(e,last,YOU);
+    return `
+      <div class="card" style="padding:16px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+          <b style="text-transform:capitalize;">${esc(e)}</b>
+          <span class="tiny muted">${esc(YOU)} share of voice, latest ${now.toFixed(2)}%</span>
+        </div>
+        <div style="position:relative; height:${H}px;">
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+               style="position:absolute; inset:0; width:100%; height:${H}px;">${lines}</svg>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:12px; flex-wrap:wrap;">${chartLegend(withYou)}</div>
+      </div>`;
+  }).join("");
+
+  const cites = (OMNIA.citations||[]).slice(0,40).map(c=>`
+    <tr><td style="max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        <a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.title||c.url)}</a></td>
+      <td class="tiny muted">${esc(c.domain)}</td>
+      <td>${c.total}</td><td class="tiny muted">${esc(c.type||"")}</td></tr>`).join("");
+
+  const feats = (OMNIA.features||[]).slice(0,30).map(f=>`
+    <tr><td>${esc(f.brand)}</td><td>${esc(f.feature_name)}</td>
+      <td>${f.endorsed}</td><td>${f.undermined}</td><td>${f.total}</td></tr>`).join("");
+
+  return `
+    <div class="card" style="padding:16px; margin-bottom:14px; border-left:3px solid #d97706;">
+      <b>Imported from Omnia — historical, not ours</b>
+      <div class="tiny muted" style="margin-top:6px; line-height:1.5;">
+        ${OMNIA.promptCount} prompts, ${days.length} days
+        (${esc(OMNIA.dateRange[0])} to ${esc(OMNIA.dateRange[1])}),
+        engines ${esc(engines.join(" + "))}.
+        Omnia ran its own queries with its own methodology, so these numbers are
+        <b>not directly comparable</b> to the Briefing tab and are deliberately kept
+        as a separate series. Perplexity and Google AI Overviews were not imported.
+      </div>
+    </div>
+    ${blocks}
+    <div class="card" style="padding:16px; margin-bottom:14px;">
+      <b>Most-cited URLs (Omnia, whole window)</b>
+      <table style="width:100%; margin-top:8px;"><thead><tr>
+        <th>Title</th><th>Domain</th><th>Citations</th><th>Type</th></tr></thead>
+        <tbody>${cites}</tbody></table>
+    </div>
+    <div class="card" style="padding:16px;">
+      <b>Feature-level sentiment (Omnia only — we don't compute this yet)</b>
+      <table style="width:100%; margin-top:8px;"><thead><tr>
+        <th>Brand</th><th>Feature</th><th>Endorsed</th><th>Undermined</th><th>Total</th>
+        </tr></thead><tbody>${feats}</tbody></table>
+    </div>`;
+}
+
 function render(){
   D = derive(state.range);
   renderTabs();
@@ -762,6 +838,7 @@ function render(){
   if (state.tab==="Prompts")    v.innerHTML = renderPrompts();
   if (state.tab==="Citations")  v.innerHTML = renderCitations();
   if (state.tab==="AI Answers") v.innerHTML = renderAnswers();
+  if (state.tab==="Omnia history") v.innerHTML = renderOmnia();
 }
 render();
 </script>
@@ -773,12 +850,16 @@ render();
 def generate(output_path=None):
     settings  = load_settings()
     responses = database.get_all_responses()
+    omnia     = omnia_view.load()
 
     if not responses:
         print("No data in the database yet. Run a daily scan first.")
         return
 
     data = build_data(responses, settings)
+    # Imported Omnia history, shown as its own labelled series. None until
+    # src/omnia_import.py has run.
+    data["omnia"] = omnia
     # </script> inside answer texts would terminate the data block early
     data_json = json.dumps(data).replace("</", "<\\/")
 

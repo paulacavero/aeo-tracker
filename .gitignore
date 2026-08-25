@@ -9,6 +9,9 @@ __pycache__/
 # Example versions (config/*.example.json) ARE committed so others can use the tool.
 config/prompts.json
 config/settings.json
+# Backups of the two files above — same private contents.
+config/*.bak
+config/*.bak[0-9]
 
 # Generated dashboards (regenerated from the DBs; can contain competitor intel)
 dashboard.html
