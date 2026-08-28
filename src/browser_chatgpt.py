@@ -89,6 +89,30 @@ def _kill_automation_chrome():
     time.sleep(3)
 
 
+def _running_chrome_mode():
+    """
+    Which mode the currently-running automation Chrome was launched in, or None
+    if it isn't running. Reusing a Chrome launched in a different mode is not
+    harmless: a leftover --headless instance connects over CDP perfectly well
+    and then gets served a Cloudflare challenge instead of ChatGPT, so every
+    prompt fails downstream with "Could not find input textarea".
+    """
+    try:
+        out = subprocess.run(["ps", "-eo", "command"], capture_output=True,
+                             text=True, timeout=10).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        if f"remote-debugging-port={CDP_PORT}" not in line:
+            continue
+        if "--headless" in line:
+            return "headless"
+        if "--window-position=-32000" in line:
+            return "offscreen"
+        return "visible"
+    return None
+
+
 def _ensure_chrome_running(force_fresh=False):
     """
     Launch the dedicated automation Chrome with remote debugging if it isn't
@@ -108,12 +132,21 @@ def _ensure_chrome_running(force_fresh=False):
         _kill_automation_chrome()
     else:
         # Check if debugging port is already open
+        port_open = False
         try:
             urllib.request.urlopen(f"http://localhost:{CDP_PORT}/json", timeout=2)
-            print("  Automation Chrome already running with debug port.")
-            return
+            port_open = True
         except Exception:
             pass
+        if port_open:
+            running = _running_chrome_mode()
+            if running and running != CHROME_MODE:
+                print(f"  Automation Chrome is running in {running} mode but "
+                      f"{CHROME_MODE} is wanted — restarting it.")
+                _kill_automation_chrome()
+            else:
+                print("  Automation Chrome already running with debug port.")
+                return
 
     if not CHROME_BIN:
         raise RuntimeError(
