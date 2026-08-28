@@ -61,26 +61,59 @@ def _detect_chrome():
 
 CHROME_BIN = _detect_chrome()
 CDP_PORT = 9222
+
+# How the automation Chrome presents itself. Set with AEO_CHROME_MODE.
+#   visible   — a normal window (the original behaviour)
+#   offscreen — a real window parked far off the desktop: it still renders and
+#               isn't throttled like a background tab, but never covers your work
+#   headless  — Chrome's new headless mode. No window at all, but a headless
+#               fingerprint is much easier for a site to flag as automation.
+# Changing this only takes effect on a fresh Chrome: _ensure_chrome_running
+# reuses an already-open debug port and won't relaunch with new flags.
+CHROME_MODE = os.environ.get("AEO_CHROME_MODE", "offscreen").lower()
+
+# bring_to_front() on every prompt is what made the scan unusable while it ran
+# — 100+ focus grabs a day. Off-screen windows render without it. Set
+# AEO_CHROME_FOCUS=1 to restore the old behaviour if a mode needs it.
+FOCUS_TABS = os.environ.get("AEO_CHROME_FOCUS", "0") == "1"
 # Dedicated automation profile (under auth/, gitignored). Persists logins
 # between runs and lets automation Chrome coexist with your normal Chrome.
 PROFILE_DIR = Path(__file__).resolve().parent.parent / "auth" / "chrome_profile"
 RESPONSE_TIMEOUT = 120
 
 
-def _ensure_chrome_running():
+def _kill_automation_chrome():
+    """Kill only our automation Chrome, matched on its debug port."""
+    subprocess.run(["pkill", "-f", f"remote-debugging-port={CDP_PORT}"],
+                   capture_output=True)
+    time.sleep(3)
+
+
+def _ensure_chrome_running(force_fresh=False):
     """
     Launch the dedicated automation Chrome with remote debugging if it isn't
     already up. Uses a separate --user-data-dir so it runs alongside your normal
     Chrome (Chrome 136+ blocks remote debugging on the default profile).
+
+    force_fresh kills any existing instance first. An open debug port is not
+    proof of a healthy browser: a Chrome left running for days goes stale and
+    every connect_over_cdp then fails with "Browser context management is not
+    supported", which cost two full days of ChatGPT collection in Aug 2026
+    because the port was open so we kept reusing the broken instance.
     """
     import urllib.request
-    # Check if debugging port is already open
-    try:
-        urllib.request.urlopen(f"http://localhost:{CDP_PORT}/json", timeout=2)
-        print("  Automation Chrome already running with debug port.")
-        return
-    except Exception:
-        pass
+
+    if force_fresh:
+        print("  Restarting automation Chrome (previous instance unusable)...")
+        _kill_automation_chrome()
+    else:
+        # Check if debugging port is already open
+        try:
+            urllib.request.urlopen(f"http://localhost:{CDP_PORT}/json", timeout=2)
+            print("  Automation Chrome already running with debug port.")
+            return
+        except Exception:
+            pass
 
     if not CHROME_BIN:
         raise RuntimeError(
@@ -89,18 +122,22 @@ def _ensure_chrome_running():
         )
 
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    print("  Launching automation Chrome (separate profile — your normal Chrome is untouched)...")
-    subprocess.Popen(
-        [
-            CHROME_BIN,
-            f"--remote-debugging-port={CDP_PORT}",
-            f"--user-data-dir={PROFILE_DIR}",
-            "--no-first-run",
-            "--no-default-browser-check",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    args = [
+        CHROME_BIN,
+        f"--remote-debugging-port={CDP_PORT}",
+        f"--user-data-dir={PROFILE_DIR}",
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+    if CHROME_MODE == "offscreen":
+        # Far outside any plausible display, so macOS never shows it.
+        args += ["--window-position=-32000,-32000", "--window-size=1280,900"]
+    elif CHROME_MODE == "headless":
+        args += ["--headless=new", "--window-size=1280,900"]
+
+    print(f"  Launching automation Chrome (mode: {CHROME_MODE}, "
+          f"separate profile — your normal Chrome is untouched)...")
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Wait for Chrome to be ready
     for _ in range(20):
@@ -122,10 +159,20 @@ def run_prompt(playwright, prompt_text, headless=True):
     """
     _ensure_chrome_running()
 
-    browser = playwright.chromium.connect_over_cdp(f"http://localhost:{CDP_PORT}")
+    # A stale-but-listening Chrome fails here, not at launch. Recover once by
+    # forcing a fresh browser rather than failing this prompt and every prompt
+    # after it.
+    try:
+        browser = playwright.chromium.connect_over_cdp(f"http://localhost:{CDP_PORT}")
+    except Exception as e:
+        print(f"  [ChatGPT] CDP connect failed ({type(e).__name__}), restarting Chrome")
+        _ensure_chrome_running(force_fresh=True)
+        browser = playwright.chromium.connect_over_cdp(f"http://localhost:{CDP_PORT}")
+
     context = browser.contexts[0] if browser.contexts else browser.new_context()
     page = context.new_page()
-    page.bring_to_front()
+    if FOCUS_TABS:
+        page.bring_to_front()
 
     try:
         print(f"  [ChatGPT] Navigating to chatgpt.com...")
@@ -140,8 +187,8 @@ def run_prompt(playwright, prompt_text, headless=True):
             page.evaluate("window.location.href = 'https://chatgpt.com/'")
             page.wait_for_url("*chatgpt.com*", timeout=15000)
         print(f"  [ChatGPT] URL now: {page.url}")
-        page.bring_to_front()
-        page.wait_for_timeout(3000)
+        if FOCUS_TABS:
+            page.bring_to_front()
         page.wait_for_timeout(3000)
 
         if "login" in page.url or "auth/error" in page.url:
